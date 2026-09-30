@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Vinyl Player Pro - Background Audio Supported</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            vinyl: '#0d0d11',
+            accent: '#ff4757',
+            accentHover: '#ff6b81',
+            gold: '#d4af37',
+            wood: '#2c1d11'
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom vinyl texture & spin animations */
+    .vinyl-grooves {
+      background: radial-gradient(circle, 
+        #222 0%, #151518 20%, 
+        #09090b 22%, #1a1a20 25%, 
+        #0d0d10 40%, #1f1f26 42%, 
+        #08080a 60%, #1c1c22 62%, 
+        #050507 80%, #121216 100%);
+    }
+
+    .vinyl-shine {
+      background: conic-gradient(
+        from 0deg,
+        rgba(255, 255, 255, 0.08) 0deg,
+        rgba(255, 255, 255, 0) 45deg,
+        rgba(255, 255, 255, 0.08) 90deg,
+        rgba(255, 255, 255, 0) 180deg,
+        rgba(255, 255, 255, 0.08) 270deg,
+        rgba(255, 255, 255, 0) 360deg
+      );
+    }
+
+    .spin-animation {
+      animation: spin 1.8s linear infinite;
+    }
+
+    .spin-paused {
+      animation-play-state: paused;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Tonearm Transition */
+    .tonearm {
+      transform-origin: 24px 24px;
+      transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .tonearm-resting {
+      transform: rotate(-32deg);
+    }
+
+    .tonearm-playing {
+      transform: rotate(8deg);
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 71, 87, 0.5);
+    }
+
+    /* Range slider custom styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+      height: 6px;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 14px;
+      width: 14px;
+      border-radius: 50%;
+      background: #ff4757;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(255, 71, 87, 0.8);
+      transition: transform 0.1s ease;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+  </style>
+</head>
+<body class="bg-[#070709] text-gray-100 min-h-screen flex items-center justify-center p-3 sm:p-6 select-none font-sans">
+
+  <!-- Main Outer Shell -->
+  <div class="relative w-full max-w-md bg-[#13131a] border border-white/10 rounded-3xl p-5 sm:p-7 shadow-2xl shadow-black/80 backdrop-blur-xl overflow-hidden flex flex-col items-center">
+    
+    <!-- Top Header & Status -->
+    <div class="w-full flex justify-between items-center mb-4">
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-accent animate-pulse" id="statusLed"></span>
+        <h1 class="text-xs font-bold uppercase tracking-[0.25em] text-gray-400">Vinyl Player Pro</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="toggleCrackle" title="Analog Crackle Sound" class="p-2 text-xs rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 hover:text-white transition flex items-center gap-1.5">
+          <i class="fa-solid fa-record-vinyl text-accent"></i>
+          <span id="crackleLabel" class="text-[10px] font-mono">CRACKLE OFF</span>
+        </button>
+        <button id="btnPlaylist" title="Open Playlist" class="p-2 text-xs rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white transition relative">
+          <i class="fa-solid fa-list-ul"></i>
+          <span id="badgePlaylistCount" class="hidden absolute -top-1 -right-1 bg-accent text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Background Playback Indicator Banner -->
+    <div class="w-full mb-4 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between text-[11px] text-emerald-400">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-mobile-screen-button animate-bounce"></i>
+        <span>バックグラウンド再生・ロック画面高音質対応</span>
+      </div>
+      <i class="fa-solid fa-check-circle text-emerald-400"></i>
+    </div>
+
+    <!-- Turntable Deck -->
+    <div class="relative w-full aspect-square max-w-[280px] sm:max-w-[300px] bg-[#1a1a24] rounded-2xl p-4 border border-white/5 shadow-inner flex items-center justify-center overflow-hidden mb-5">
+      
+      <!-- Audio Visualizer Canvas -->
+      <canvas id="visualizerCanvas" class="absolute inset-0 w-full h-full opacity-40 pointer-events-none"></canvas>
+
+      <!-- Speed Indicator Label in Deck -->
+      <div class="absolute top-3 left-3 text-[10px] font-mono tracking-wider text-gray-500 uppercase">
+        RPM: <span id="rpmDisplay" class="text-accent font-bold">33</span>
+      </div>
+
+      <!-- Vinyl Record Container -->
+      <div class="relative w-[82%] h-[82%] flex items-center justify-center">
+        <!-- Rotating Vinyl Disc -->
+        <div id="vinylDisc" class="w-full h-full rounded-full vinyl-grooves relative flex items-center justify-center shadow-2xl border border-white/10 overflow-hidden transform-gpu transition-transform duration-700">
+          
+          <!-- Vinyl Shine Overlay -->
+          <div class="absolute inset-0 vinyl-shine rounded-full pointer-events-none"></div>
+          
+          <!-- Outer Rim Accent -->
+          <div class="absolute inset-2 border border-white/5 rounded-full pointer-events-none"></div>
+          <div class="absolute inset-8 border border-white/5 rounded-full pointer-events-none"></div>
+          <div class="absolute inset-16 border border-white/5 rounded-full pointer-events-none"></div>
+
+          <!-- Center Label -->
+          <div id="vinylLabel" class="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-accent to-red-600 border-4 border-[#0d0d11] shadow-md flex flex-col items-center justify-center text-center p-2 relative overflow-hidden transition-all duration-300">
+            <div id="albumArtBg" class="absolute inset-0 bg-cover bg-center opacity-30"></div>
+            <i class="fa-solid fa-music text-white/40 text-lg mb-1 relative z-10" id="labelIcon"></i>
+            <span id="labelTrackName" class="text-[9px] font-bold text-white line-clamp-1 relative z-10 px-1">VINYL PRO</span>
+            <!-- Center Hole -->
+            <div class="w-3.5 h-3.5 rounded-full bg-[#070709] border-2 border-gray-400 mt-1 shadow-inner relative z-10"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Realistic Tonearm Overlay -->
+      <div class="absolute top-2 right-4 w-16 h-48 pointer-events-none">
+        <!-- Tonearm Pivot Box -->
+        <div class="absolute top-3 right-3 w-8 h-8 rounded-full bg-gradient-to-b from-gray-600 to-gray-800 border border-gray-500 shadow-md flex items-center justify-center">
+          <div class="w-3 h-3 rounded-full bg-gray-400 border border-gray-900"></div>
+        </div>
+        <!-- Tonearm Stick -->
+        <div id="tonearm" class="tonearm tonearm-resting absolute top-3 right-3 w-12 h-44">
+          <div class="w-1.5 h-36 bg-gradient-to-r from-gray-300 via-gray-100 to-gray-400 rounded-full shadow-md ml-3 transform rotate-6"></div>
+          <!-- Headshell & Cartridge -->
+          <div class="absolute bottom-4 left-1 w-4 h-7 bg-gray-900 rounded-sm border border-gray-600 transform -rotate-12 shadow-md flex flex-col items-center">
+            <div class="w-2 h-1 bg-accent mt-5 rounded-xs"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Track Info Banner -->
+    <div class="w-full text-center mb-4 px-2">
+      <div id="trackTitle" class="text-base font-bold text-white truncate tracking-wide">
+        曲・MP4ファイルを選択してください
+      </div>
+      <div class="flex items-center justify-center gap-2 mt-1">
+        <span id="trackStatus" class="text-xs font-mono text-accent">待機中</span>
+        <span class="text-gray-600">•</span>
+        <span id="trackTime" class="text-xs font-mono text-gray-400">00:00 / 00:00</span>
+      </div>
+    </div>
+
+    <!-- Seek / Progress Bar -->
+    <div class="w-full mb-5 px-1">
+      <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1" class="w-full cursor-pointer accent-accent">
+    </div>
+
+    <!-- Primary Control Buttons -->
+    <div class="w-full flex items-center justify-between mb-6 px-3">
+      <!-- Speed / RPM Toggle -->
+      <button id="btnSpeed" title="Change RPM Speed" class="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 flex items-center justify-center text-xs font-mono font-bold transition active:scale-95">
+        33
+      </button>
+
+      <!-- Previous -->
+      <button id="btnPrev" title="Previous Track" class="w-11 h-11 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 flex items-center justify-center text-base transition active:scale-95">
+        <i class="fa-solid fa-backward-step"></i>
+      </button>
+
+      <!-- Play / Pause Main Button -->
+      <button id="btnPlay" title="Play / Pause" class="w-16 h-16 rounded-full bg-gradient-to-tr from-accent to-red-500 text-white shadow-lg shadow-accent/40 flex items-center justify-center text-xl transition transform hover:scale-105 active:scale-95">
+        <i class="fa-solid fa-play ml-1" id="playIcon"></i>
+      </button>
+
+      <!-- Next -->
+      <button id="btnNext" title="Next Track" class="w-11 h-11 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 flex items-center justify-center text-base transition active:scale-95">
+        <i class="fa-solid fa-forward-step"></i>
+      </button>
+
+      <!-- Loop Mode -->
+      <button id="btnRepeat" title="Repeat Mode" class="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 flex items-center justify-center text-xs transition active:scale-95">
+        <i class="fa-solid fa-repeat"></i>
+      </button>
+    </div>
+
+    <!-- Secondary Controls (Volume & File Loader) -->
+    <div class="w-full flex items-center gap-3">
+      <!-- Volume Toggle & Slider -->
+      <div class="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2.5 rounded-2xl flex-1">
+        <button id="btnMute" class="text-gray-400 hover:text-white transition">
+          <i class="fa-solid fa-volume-high text-xs" id="muteIcon"></i>
+        </button>
+        <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="w-full cursor-pointer">
+      </div>
+
+      <!-- Choose File Button -->
+      <label class="relative cursor-pointer bg-gradient-to-r from-accent/20 to-red-600/20 hover:from-accent/30 hover:to-red-600/30 border border-accent/40 text-accent hover:text-white px-4 py-2.5 rounded-2xl font-semibold text-xs transition flex items-center justify-center gap-2 shrink-0">
+        <i class="fa-solid fa-folder-open"></i>
+        <span>曲を選択</span>
+        <input type="file" id="fileInput" accept="audio/*,video/*,.mp3,.m4a,.mp4,.m4v,.wav,.aac,.flac" multiple class="hidden">
+      </label>
+    </div>
+
+    <!-- Hidden Native Audio Element with inline attributes for iOS compatibility -->
+    <audio id="audioEngine" playsinline preload="auto"></audio>
+
+    <!-- Playlist Drawer Modal -->
+    <div id="playlistDrawer" class="absolute inset-0 bg-[#0d0d12]/95 backdrop-blur-xl z-30 transition-all duration-300 transform translate-y-full p-5 flex flex-col">
+      <div class="flex justify-between items-center mb-4 pb-3 border-b border-white/10">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-compact-disc text-accent"></i>
+          <h2 class="text-sm font-bold tracking-wider uppercase text-white">プレイリスト</h2>
+        </div>
+        <button id="btnClosePlaylist" class="text-gray-400 hover:text-white p-1 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- Playlist Items Container -->
+      <div id="playlistContainer" class="flex-1 overflow-y-auto space-y-2 pr-1">
+        <div class="text-center text-gray-500 py-12 text-xs">
+          <i class="fa-solid fa-music text-2xl mb-2 block opacity-40"></i>
+          ファイルが追加されていません
+        </div>
+      </div>
+
+      <!-- Clear Playlist Action -->
+      <div class="pt-3 border-t border-white/10 mt-2 flex justify-between items-center">
+        <span id="playlistCountText" class="text-xs text-gray-400">0 曲</span>
+        <button id="btnClearPlaylist" class="text-xs text-red-400 hover:text-red-300 transition flex items-center gap-1">
+          <i class="fa-solid fa-trash-can"></i> クリア
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Global Audio Context & Nodes for Synthetic Vinyl Crackle
+    let audioCtx, crackleSource, crackleGain;
+    let isCrackleOn = false;
+
+    // Core State Variables
+    let playlist = [];
+    let currentIndex = 0;
+    let isPlaying = false;
+    let repeatMode = 0; // 0: None, 1: Repeat All, 2: Repeat One
+    let rpmSpeeds = [33, 45, 78];
+    let currentRpmIndex = 0;
+
+    // DOM Elements
+    const audioEngine = document.getElementById('audioEngine');
+    const btnPlay = document.getElementById('btnPlay');
+    const playIcon = document.getElementById('playIcon');
+    const btnPrev = document.getElementById('btnPrev');
+    const btnNext = document.getElementById('btnNext');
+    const btnRepeat = document.getElementById('btnRepeat');
+    const btnSpeed = document.getElementById('btnSpeed');
+    const rpmDisplay = document.getElementById('rpmDisplay');
+    const fileInput = document.getElementById('fileInput');
+    const seekBar = document.getElementById('seekBar');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const btnMute = document.getElementById('btnMute');
+    const muteIcon = document.getElementById('muteIcon');
+    const trackTitle = document.getElementById('trackTitle');
+    const trackStatus = document.getElementById('trackStatus');
+    const trackTime = document.getElementById('trackTime');
+    const vinylDisc = document.getElementById('vinylDisc');
+    const tonearm = document.getElementById('tonearm');
+    const labelTrackName = document.getElementById('labelTrackName');
+    const toggleCrackle = document.getElementById('toggleCrackle');
+    const crackleLabel = document.getElementById('crackleLabel');
+    const statusLed = document.getElementById('statusLed');
+    const visualizerCanvas = document.getElementById('visualizerCanvas');
+    const canvasCtx = visualizerCanvas.getContext('2d');
+
+    // Drawer Elements
+    const btnPlaylist = document.getElementById('btnPlaylist');
+    const playlistDrawer = document.getElementById('playlistDrawer');
+    const btnClosePlaylist = document.getElementById('btnClosePlaylist');
+    const playlistContainer = document.getElementById('playlistContainer');
+    const badgePlaylistCount = document.getElementById('badgePlaylistCount');
+    const playlistCountText = document.getElementById('playlistCountText');
+    const btnClearPlaylist = document.getElementById('btnClearPlaylist');
+
+    // Initialize Audio Engine settings for direct output
+    audioEngine.volume = parseFloat(volumeSlider.value) || 0.8;
+
+    // Register Media Session Handlers for Background & Lock Screen Control
+    function setupMediaSession() {
+      if (!('mediaSession' in navigator)) return;
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        playTrack();
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        pauseTrack();
+      });
+
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        btnPrev.click();
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        btnNext.click();
+      });
+
+      try {
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.seekTime !== undefined && audioEngine.duration) {
+            audioEngine.currentTime = details.seekTime;
+            updateMediaSessionPosition();
+          }
+        });
+      } catch (e) {
+        console.log('SeekTo media action handler not supported:', e);
+      }
+    }
+
+    // Update Media Session Metadata on Lock Screen
+    function updateMediaSessionMetadata(track) {
+      if (!('mediaSession' in navigator)) return;
+
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.name,
+        artist: 'Vinyl Player Pro',
+        album: `トラック ${currentIndex + 1} / ${playlist.length}`,
+        artwork: [
+          { src: 'https://placehold.co/96x96/ff4757/ffffff?text=Vinyl', sizes: '96x96', type: 'image/png' },
+          { src: 'https://placehold.co/128x128/ff4757/ffffff?text=Vinyl', sizes: '128x128', type: 'image/png' },
+          { src: 'https://placehold.co/256x256/ff4757/ffffff?text=Vinyl+Pro', sizes: '256x256', type: 'image/png' },
+          { src: 'https://placehold.co/512x512/ff4757/ffffff?text=Vinyl+Pro', sizes: '512x512', type: 'image/png' }
+        ]
+      });
+
+      updateMediaSessionPosition();
+    }
+
+    function updateMediaSessionPosition() {
+      if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setPositionState !== 'function') return;
+      if (audioEngine.duration && !isNaN(audioEngine.duration)) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: audioEngine.duration,
+            playbackRate: audioEngine.playbackRate || 1.0,
+            position: audioEngine.currentTime || 0
+          });
+        } catch (err) {
+          console.warn('SetPositionState error:', err);
+        }
+      }
+    }
+
+    // Initialize Web Audio Context for Crackle Noise generator
+    function initAudioContext() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Native Synthetic Crackle Noise Generator
+    function startCrackleSound() {
+      initAudioContext();
+      if (crackleSource) {
+        try { crackleSource.stop(); } catch(e){}
+      }
+
+      const bufferSize = audioCtx.sampleRate * 2;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+
+      for (let i = 0; i < bufferSize; i++) {
+        const rand = Math.random();
+        if (rand > 0.9985) {
+          data[i] = (Math.random() * 2 - 1) * 0.6; // Clicks & pops
+        } else {
+          data[i] = (Math.random() * 2 - 1) * 0.012; // Low background hiss
+        }
+      }
+
+      crackleSource = audioCtx.createBufferSource();
+      crackleSource.buffer = buffer;
+      crackleSource.loop = true;
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 2800;
+
+      crackleGain = audioCtx.createGain();
+      crackleGain.gain.value = (isPlaying && isCrackleOn) ? 0.05 : 0.0;
+
+      crackleSource.connect(filter);
+      filter.connect(crackleGain);
+      crackleGain.connect(audioCtx.destination);
+
+      crackleSource.start();
+    }
+
+    function updateCrackleState() {
+      if (!crackleGain || !audioCtx) return;
+      const targetGain = (isPlaying && isCrackleOn) ? 0.05 : 0.0;
+      crackleGain.gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.05);
+    }
+
+    toggleCrackle.onclick = () => {
+      isCrackleOn = !isCrackleOn;
+      if (isCrackleOn) {
+        if (!crackleSource) startCrackleSound();
+        crackleLabel.textContent = 'CRACKLE ON';
+        crackleLabel.classList.add('text-accent');
+      } else {
+        crackleLabel.textContent = 'CRACKLE OFF';
+        crackleLabel.classList.remove('text-accent');
+      }
+      updateCrackleState();
+    };
+
+    // File Input Handling with Object URL
+    fileInput.onchange = (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+
+      playlist.forEach(item => {
+        if (item.url) URL.revokeObjectURL(item.url);
+      });
+
+      const sortedFiles = files.sort((a, b) => 
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      );
+
+      playlist = sortedFiles.map(file => ({
+        file,
+        name: file.name.replace(/\.[^/.]+$/, ''),
+        url: URL.createObjectURL(file)
+      }));
+
+      currentIndex = 0;
+      updatePlaylistUI();
+      loadTrack(currentIndex);
+    };
+
+    function loadTrack(index) {
+      if (!playlist.length || index < 0 || index >= playlist.length) return;
+
+      const track = playlist[index];
+      audioEngine.src = track.url;
+      trackTitle.textContent = track.name;
+      labelTrackName.textContent = track.name;
+      trackStatus.textContent = `準備完了 (${index + 1}/${playlist.length})`;
+      
+      updatePlaylistUI();
+      updateMediaSessionMetadata(track);
+      playTrack();
+    }
+
+    function playTrack() {
+      initAudioContext();
+      setupMediaSession();
+
+      audioEngine.play().then(() => {
+        isPlaying = true;
+        playIcon.className = 'fa-solid fa-pause';
+        
+        // Vinyl animation & tonearm controls
+        vinylDisc.classList.add('spin-animation');
+        vinylDisc.style.animationPlayState = 'running';
+        tonearm.classList.remove('tonearm-resting');
+        tonearm.classList.add('tonearm-playing');
+        
+        statusLed.className = 'inline-block w-2.5 h-2.5 rounded-full bg-accent animate-pulse';
+        trackStatus.textContent = `▶ 再生中 (${currentIndex + 1}/${playlist.length})`;
+
+        updateCrackleState();
+
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
+      }).catch((err) => {
+        console.warn('Playback interrupted:', err);
+        trackStatus.textContent = 'タップして再生';
+        pauseTrack();
+      });
+    }
+
+    function pauseTrack() {
+      audioEngine.pause();
+      isPlaying = false;
+      playIcon.className = 'fa-solid fa-play ml-1';
+      
+      // Pause vinyl animation and reset tonearm
+      vinylDisc.style.animationPlayState = 'paused';
+      tonearm.classList.remove('tonearm-playing');
+      tonearm.classList.add('tonearm-resting');
+      
+      statusLed.className = 'inline-block w-2.5 h-2.5 rounded-full bg-gray-600';
+      trackStatus.textContent = '⏸ 一時停止';
+
+      updateCrackleState();
+
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    }
+
+    btnPlay.onclick = () => {
+      if (!audioEngine.src) return;
+      if (isPlaying) {
+        pauseTrack();
+      } else {
+        playTrack();
+      }
+    };
+
+    btnPrev.onclick = () => {
+      if (!playlist.length) return;
+      currentIndex = (currentIndex - 1 + playlist.length) % playlist.length;
+      loadTrack(currentIndex);
+    };
+
+    btnNext.onclick = () => {
+      if (!playlist.length) return;
+      currentIndex = (currentIndex + 1) % playlist.length;
+      loadTrack(currentIndex);
+    };
+
+    // RPM Speed Toggle Controls
+    btnSpeed.onclick = () => {
+      currentRpmIndex = (currentRpmIndex + 1) % rpmSpeeds.length;
+      const speed = rpmSpeeds[currentRpmIndex];
+      btnSpeed.textContent = speed;
+      rpmDisplay.textContent = speed;
+
+      let rate = 1.0;
+      if (speed === 45) rate = 1.36;
+      if (speed === 78) rate = 2.36;
+
+      audioEngine.playbackRate = rate;
+      vinylDisc.style.animationDuration = `${1.8 / rate}s`;
+      updateMediaSessionPosition();
+    };
+
+    // Repeat Mode Toggle
+    btnRepeat.onclick = () => {
+      repeatMode = (repeatMode + 1) % 3;
+      if (repeatMode === 0) {
+        btnRepeat.className = 'w-10 h-10 rounded-full bg-white/5 border border-white/10 text-gray-400 flex items-center justify-center text-xs transition';
+        btnRepeat.title = 'リピート: オフ';
+      } else if (repeatMode === 1) {
+        btnRepeat.className = 'w-10 h-10 rounded-full bg-accent/20 border border-accent text-accent flex items-center justify-center text-xs transition';
+        btnRepeat.title = 'リピート: 全曲';
+      } else {
+        btnRepeat.className = 'w-10 h-10 rounded-full bg-accent border border-accent text-white flex items-center justify-center text-xs transition';
+        btnRepeat.title = 'リピート: 1曲';
+      }
+    };
+
+    // Audio Engine Events
+    audioEngine.onended = () => {
+      if (repeatMode === 2) {
+        audioEngine.currentTime = 0;
+        playTrack();
+      } else if (repeatMode === 1 || currentIndex < playlist.length - 1) {
+        currentIndex = (currentIndex + 1) % playlist.length;
+        loadTrack(currentIndex);
+      } else {
+        pauseTrack();
+        audioEngine.currentTime = 0;
+      }
+    };
+
+    audioEngine.ontimeupdate = () => {
+      if (!audioEngine.duration) return;
+      const current = audioEngine.currentTime;
+      const total = audioEngine.duration;
+      seekBar.value = (current / total) * 100;
+      trackTime.textContent = `${formatTime(current)} / ${formatTime(total)}`;
+      updateMediaSessionPosition();
+    };
+
+    seekBar.oninput = (e) => {
+      if (!audioEngine.duration) return;
+      const targetTime = (e.target.value / 100) * audioEngine.duration;
+      audioEngine.currentTime = targetTime;
+      updateMediaSessionPosition();
+    };
+
+    // Volume Controls
+    volumeSlider.oninput = (e) => {
+      audioEngine.volume = e.target.value;
+      updateMuteIcon();
+    };
+
+    btnMute.onclick = () => {
+      audioEngine.muted = !audioEngine.muted;
+      updateMuteIcon();
+    };
+
+    function updateMuteIcon() {
+      if (audioEngine.muted || audioEngine.volume === 0) {
+        muteIcon.className = 'fa-solid fa-volume-xmark text-red-400';
+      } else if (audioEngine.volume < 0.5) {
+        muteIcon.className = 'fa-solid fa-volume-low text-gray-300';
+      } else {
+        muteIcon.className = 'fa-solid fa-volume-high text-gray-300';
+      }
+    }
+
+    function formatTime(seconds) {
+      const min = Math.floor(seconds / 60);
+      const sec = Math.floor(seconds % 60);
+      return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    // Dynamic Visualizer Renderer (Direct Audio Engine Dynamic Beats)
+    let visualizerAngleOffset = 0;
+    function renderVisualizer() {
+      requestAnimationFrame(renderVisualizer);
+
+      const width = visualizerCanvas.width = visualizerCanvas.clientWidth;
+      const height = visualizerCanvas.height = visualizerCanvas.clientHeight;
+      canvasCtx.clearRect(0, 0, width, height);
+
+      if (!isPlaying) return;
+
+      visualizerAngleOffset += 0.03;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.min(width, height) * 0.42;
+      const bars = 32;
+
+      canvasCtx.lineWidth = 2;
+      canvasCtx.strokeStyle = 'rgba(255, 71, 87, 0.6)';
+      canvasCtx.beginPath();
+
+      for (let i = 0; i < bars; i++) {
+        const angle = (i / bars) * Math.PI * 2 + visualizerAngleOffset;
+        const wave = Math.sin(i * 0.5 + visualizerAngleOffset * 2) * 8 + Math.cos(i * 0.3) * 6 + 10;
+        const barHeight = Math.max(3, wave * (audioEngine.volume || 0.8));
+
+        const x1 = centerX + Math.cos(angle) * radius;
+        const y1 = centerY + Math.sin(angle) * radius;
+        const x2 = centerX + Math.cos(angle) * (radius + barHeight);
+        const y2 = centerY + Math.sin(angle) * (radius + barHeight);
+
+        canvasCtx.moveTo(x1, y1);
+        canvasCtx.lineTo(x2, y2);
+      }
+      canvasCtx.stroke();
+    }
+    renderVisualizer();
+
+    // Handle Tab Visibility & Lock Screen Return
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && isPlaying) {
+        vinylDisc.style.animationPlayState = 'running';
+        tonearm.classList.add('tonearm-playing');
+      }
+    });
+
+    // Playlist Drawer Controls
+    btnPlaylist.onclick = () => {
+      playlistDrawer.classList.remove('translate-y-full');
+    };
+
+    btnClosePlaylist.onclick = () => {
+      playlistDrawer.classList.add('translate-y-full');
+    };
+
+    btnClearPlaylist.onclick = () => {
+      playlist.forEach(item => {
+        if (item.url) URL.revokeObjectURL(item.url);
+      });
+      playlist = [];
+      audioEngine.pause();
+      audioEngine.src = '';
+      isPlaying = false;
+      pauseTrack();
+      trackTitle.textContent = '曲・MP4ファイルを選択してください';
+      labelTrackName.textContent = 'VINYL PRO';
+      trackStatus.textContent = '待機中';
+      trackTime.textContent = '00:00 / 00:00';
+      seekBar.value = 0;
+      updatePlaylistUI();
+      playlistDrawer.classList.add('translate-y-full');
+    };
+
+    function updatePlaylistUI() {
+      badgePlaylistCount.textContent = playlist.length;
+      badgePlaylistCount.classList.toggle('hidden', playlist.length === 0);
+      playlistCountText.textContent = `${playlist.length} 曲`;
+
+      if (!playlist.length) {
+        playlistContainer.innerHTML = `
+          <div class="text-center text-gray-500 py-12 text-xs">
+            <i class="fa-solid fa-music text-2xl mb-2 block opacity-40"></i>
+            ファイルが追加されていません
+          </div>`;
+        return;
+      }
+
+      playlistContainer.innerHTML = '';
+      playlist.forEach((item, i) => {
+        const isCurrent = i === currentIndex;
+        const el = document.createElement('div');
+        el.className = `p-3 rounded-xl flex items-center justify-between gap-3 text-xs cursor-pointer transition ${
+          isCurrent 
+            ? 'bg-accent/20 border border-accent/40 text-white font-semibold' 
+            : 'bg-white/5 hover:bg-white/10 text-gray-300'
+        }`;
+        
+        el.innerHTML = `
+          <div class="flex items-center gap-3 overflow-hidden">
+            <span class="w-5 text-center text-xs font-mono ${isCurrent ? 'text-accent' : 'text-gray-500'}">
+              ${isCurrent ? '<i class="fa-solid fa-compact-disc animate-spin"></i>' : i + 1}
+            </span>
+            <span class="truncate">${item.name}</span>
+          </div>
+          <button class="text-gray-500 hover:text-red-400 p-1" onclick="event.stopPropagation(); removeTrack(${i})">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        `;
+
+        el.onclick = () => {
+          currentIndex = i;
+          loadTrack(currentIndex);
+          playlistDrawer.classList.add('translate-y-full');
+        };
+
+        playlistContainer.appendChild(el);
+      });
+    }
+
+    function removeTrack(index) {
+      if (playlist[index] && playlist[index].url) {
+        URL.revokeObjectURL(playlist[index].url);
+      }
+      playlist.splice(index, 1);
+      if (currentIndex >= playlist.length) {
+        currentIndex = Math.max(0, playlist.length - 1);
+      }
+      if (playlist.length > 0) {
+        loadTrack(currentIndex);
+      } else {
+        btnClearPlaylist.click();
+      }
+      updatePlaylistUI();
+    }
+  </script>
+</body>
+</html>
